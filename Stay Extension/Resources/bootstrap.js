@@ -1,3 +1,13 @@
+/**
+ Main entrance of Stay
+ 1. Fetch inject scripts from SafariWebExtensionHandler
+ 2. Use @match, @include, @exclude to match the correct script with the url.
+ 
+ content.js passing message to background.js or popup.js using browser.runtime.sendMessage.
+ popup.js passing message to background.js using browser.runtime.sendMessage.
+ background.js passing message to content.js using browser.tabs.sendMessage.
+ popup.js passing message to content.js should sendMessage to background.js first.
+ */
 console.log("bootstrap inject");
 var __b; if (typeof browser != "undefined") {__b = browser;} if (typeof chrome != "undefined") {__b = chrome;}
 var browser = __b;
@@ -14,42 +24,48 @@ const $_uri = (url) => {
     return a;
 }
 
+//https://stackoverflow.com/questions/26246601/wildcard-string-comparison-in-javascript
+//Short code
+function matchRule(str, rule) {
+  var escapeRegex = (str) => str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+  return new RegExp("^" + rule.split("*").map(escapeRegex).join(".*") + "$").test(str);
+}
+
+
 const $_matchesCheck = (userLibraryScript,url) => {
     let matched = false;
+    let matchPatternInBlock;
     userLibraryScript.matches.forEach((match)=>{ //check matches
         let matchPattern = new window.MatchPattern(match);
         if (matchPattern.doMatch(url)){
             matched = true;
+            matchPatternInBlock = matchPattern;
         }
     });
     if (matched){
         if (userLibraryScript.includes.length > 0){
-            matched = false;
             userLibraryScript.includes.forEach((include)=>{
-                let matchPattern = new window.MatchPattern(include);
-                if (matchPattern.doMatch(url)){
-                    matched = true;
+                if (matchPatternInBlock.doMatch(include)) {
+                    matched = matchRule(url.href, include);
                 }
             });
         }
         
-        
         userLibraryScript.excludes.forEach((exclude)=>{
-            let matchPattern = new window.MatchPattern(exclude);
-            if (matchPattern.doMatch(url)){
-                matched = false;
+            if (matchPatternInBlock.doMatch(exclude)) {
+                matched = !matchRule(url.href, exclude);
             }
         });
     }
     
     return matched;
 }
-
+let injectScripts = []
 async function start(){
     browser.runtime.sendMessage({ from: "bootstrap", operate: "fetchScripts" }, (response) => {
         let injectedVendor = new Set();
         let userLibraryScripts = JSON.parse(response.body);
-        let injectScripts = [];
+        injectScripts = [];
         userLibraryScripts.forEach((userLibraryScript)=>{
             console.log(userLibraryScript);
             
@@ -75,7 +91,7 @@ async function start(){
             }
             
             if (script.active){ //inject active script
-                console.log("injectScript",script);
+                console.log("injectScript",script.content);
                 browser.runtime.sendMessage({
                     from: "bootstrap",
                     operate: "injectScript",

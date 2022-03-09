@@ -43,7 +43,6 @@
     [self setUpOneChildViewController:homeController image:[UIImage imageNamed:imgArray[0]] selectImage: [UIImage imageNamed:imgSelectArray[0]]  title:titleArray[0]];
     [self setUpOneChildViewController:searchController image:[UIImage imageNamed:imgArray[1]] selectImage: [UIImage imageNamed:imgSelectArray[1]] title:titleArray[1]];
     [self setUpOneChildViewController:syMoreController image:[UIImage imageNamed:imgArray[2]] selectImage: [UIImage imageNamed:imgSelectArray[2]] title:titleArray[2]];
-    [[UITabBar appearance] setBackgroundColor:[UIColor colorWithRed:246/255.f green:246/255.F blue:246/255.f alpha:1]];
 }
 
 
@@ -59,7 +58,6 @@
     NSDictionary *dictHome = [NSDictionary dictionaryWithObject:UIColorWithRGBA(185,101,223,1)  forKey:NSForegroundColorAttributeName];
     [navC.tabBarItem setTitleTextAttributes:dictHome forState:UIControlStateSelected];
     navC.navigationBar.tintColor = RGB(182, 32, 224);
-    [navC.navigationBar setTitleTextAttributes:@{NSForegroundColorAttributeName : RGB(182, 32, 224)}];
     [self addChildViewController:navC];
 }
 

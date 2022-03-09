@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google@PreventAppJump
 // @namespace    http://stay.app/
-// @version      0.0.1
+// @version      0.0.3
 // @description  防止从Google结果页跳转到其他App
 // @author       Stay²
 // @match        *://*.google.com/*
@@ -10,6 +10,8 @@
 // @match        *://*.xiaohongshu.com/R_E_D_I_R_E_C_T/*
 // @run-at       document-start
 // @require      stay://vendor/stay-taskloop.js
+// @updateURL    https://raw.githubusercontent.com/shenruisi/Stay-Offical-Userscript/main/google/stay-google.update.js
+// @downloadURL    https://raw.githubusercontent.com/shenruisi/Stay-Offical-Userscript/main/google/stay-google.user.js
 // ==/UserScript==
 
 const ZHIHU_REG = /^(http|https):\/\/(.*\.){0,1}zhihu.com\/.*$/;
@@ -72,7 +74,7 @@ function banBottomBanner(){
 }
 
 function replaceDirectUrl(){
-    let divs = document.querySelectorAll('div[data-hveid]');
+    let divs = document.querySelectorAll("a[href*='zhihu'],a[href*='tieba.baidu'],a[href*='xiaohongshu'],a[href*='bilibili']");
     for (var i = 0; i < divs.length; i++){
         let div = divs[i];
         let a = div.querySelector('a');

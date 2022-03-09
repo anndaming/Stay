@@ -11,6 +11,11 @@
 #import "SYDetailViewController.h"
 #import "SYEditViewController.h"
 #import "SYCodeMirrorView.h"
+#import <StoreKit/StoreKit.h>
+#import "SYNetworkUtils.h"
+#import "Tampermonkey.h"
+#import "SYVersionUtils.h"
+
 
 @interface SYHomeViewController ()<UITableViewDelegate, UITableViewDataSource,UISearchResultsUpdating,UISearchBarDelegate,UISearchControllerDelegate>
 
@@ -32,14 +37,14 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    [SYCodeMirrorView shareCodeView];
+//    [SYCodeMirrorView shareCodeView];
     self.navigationItem.leftBarButtonItem = [self leftIcon];
     self.navigationItem.rightBarButtonItem = [self rightIcon];
     self.view.backgroundColor = [UIColor whiteColor];
     UISearchController *search = [[UISearchController alloc]initWithSearchResultsController:nil];
        // 设置结果更新代理
 //    search.searchResultsUpdater = self;
-    search.searchBar.placeholder = @"Search Added user scripts";
+    search.searchBar.placeholder = @"Search added userscripts";
     self.navigationItem.searchController = search;
     self.navigationItem.searchController.delegate = self;
     self.navigationItem.searchController.searchBar.delegate = self;
@@ -58,7 +63,25 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onBecomeActive) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 
+//检测评分
+- (void)checkShowTips{
+    NSUserDefaults *groupUserDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"group.com.dajiu.stay.pro"];
+    if([groupUserDefaults objectForKey:@"tips"] != NULL){
+        int count = [[groupUserDefaults objectForKey:@"tips"] intValue];
+        if(count == 10) {
+          [SKStoreReviewController requestReview];
+        }
+        count += 1;
+        [groupUserDefaults setObject:@(count)  forKey:@"tips"];
+    } else {
+        [groupUserDefaults setObject:@(1) forKey:@"tips"];
+        [groupUserDefaults synchronize];
+    }
+}
+
+//后台唤起时处理与插件交互
 - (void)onBecomeActive{
+    [self checkShowTips];
     NSUserDefaults *groupUserDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"group.com.dajiu.stay.pro"];
     if([groupUserDefaults arrayForKey:@"ACTIVE_CHANGE"] != NULL && [groupUserDefaults arrayForKey:@"ACTIVE_CHANGE"].count > 0){
         NSMutableArray<NSDictionary *> *datas = [NSMutableArray arrayWithArray:[groupUserDefaults arrayForKey:@"ACTIVE_CHANGE"]];
@@ -72,6 +95,102 @@
     [self reloadTableView];
     [self.tableView reloadData];
     [self initScrpitContent];
+    NSArray *array = [[DataManager shareManager] findScript:1];
+    [self updateScriptWhen:array type:false];
+    NSArray *searchArray = [[DataManager shareManager] findScriptInLib];
+    [self updateScriptWhen:searchArray type:true];
+}
+
+- (void)updateScriptWhen:(NSArray *)array type:(bool)isSearch {
+    for(int i = 0; i < array.count; i++) {
+        UserScript *scrpit = array[i];
+        if(!isSearch && !scrpit.updateSwitch) {
+            continue;
+        }
+        
+        if(scrpit.updateUrl != NULL && scrpit.updateUrl.length > 0) {
+            [[SYNetworkUtils shareInstance] requestGET:scrpit.updateUrl params:NULL successBlock:^(NSString * _Nonnull responseObject) {
+                if(responseObject != nil) {
+                    UserScript *userScript = [[Tampermonkey shared] parseWithScriptContent:responseObject];
+                    if(userScript.version != NULL) {
+                        NSInteger status =  [SYVersionUtils compareVersion:userScript.version toVersion:scrpit.version];
+                        if(status == 1) {
+                            if(userScript.downloadUrl == nil || userScript.downloadUrl.length <= 0){
+                                if(userScript.content != nil && userScript.content.length > 0) {
+                                    userScript.uuid = scrpit.uuid;
+                                    userScript.active = scrpit.active;
+                                    if(isSearch) {
+                                        [[DataManager shareManager] updateScriptConfigByUserScript:userScript];
+                                        NSNotification *notification = [NSNotification notificationWithName:@"uploadScriptSuccess" object:nil];
+                                        [[NSNotificationCenter defaultCenter]postNotification:notification];
+                                    } else {
+                                        [[DataManager shareManager] updateUserScript:userScript];
+                                        [self refreshScript];
+                                    }
+                                }
+                            } else {
+                                [[SYNetworkUtils shareInstance] requestGET:scrpit.downloadUrl params:nil successBlock:^(NSString * _Nonnull responseObject) {
+                                    if(responseObject != nil) {
+                                        UserScript *userScript = [[Tampermonkey shared] parseWithScriptContent:responseObject];
+                                        userScript.uuid = scrpit.uuid;
+                                        userScript.active = scrpit.active;
+                                        if(userScript != nil && userScript.errorMessage != nil && userScript.errorMessage.length <= 0) {
+                                            if(isSearch) {
+                                                [[DataManager shareManager] updateScriptConfigByUserScript:userScript];
+                                                NSNotification *notification = [NSNotification notificationWithName:@"uploadScriptSuccess" object:nil];
+                                                [[NSNotificationCenter defaultCenter]postNotification:notification];
+                                            } else {
+                                                [[DataManager shareManager] updateUserScript:userScript];
+                                                [self refreshScript];
+                                            }
+                                        }
+                                    }
+                                } failBlock:^(NSError * _Nonnull error) {
+                                    
+                                }];
+                            }
+                        }
+                    }
+                    
+                }
+            } failBlock:^(NSError * _Nonnull error) {
+                        
+            }];
+        } else if(scrpit.downloadUrl != NULL && scrpit.downloadUrl.length > 0) {
+            [[SYNetworkUtils shareInstance] requestGET:scrpit.downloadUrl params:nil successBlock:^(NSString * _Nonnull responseObject) {
+                if(responseObject != nil) {
+                    UserScript *userScript = [[Tampermonkey shared] parseWithScriptContent:responseObject];
+                    if(userScript.version != NULL) {
+                        NSInteger status = [SYVersionUtils compareVersion:userScript.version toVersion:scrpit.version];
+                        if(status == 1) {
+                            userScript.uuid = scrpit.uuid;
+                            userScript.active = scrpit.active;
+                            if(userScript != nil && userScript.errorMessage != nil && userScript.errorMessage.length <= 0) {
+                                if(isSearch) {
+                                    [[DataManager shareManager] updateScriptConfigByUserScript:userScript];
+                                    NSNotification *notification = [NSNotification notificationWithName:@"uploadScriptSuccess" object:nil];
+                                    [[NSNotificationCenter defaultCenter]postNotification:notification];
+                                } else {
+                                    [[DataManager shareManager] updateUserScript:userScript];
+                                    [self refreshScript];
+                                }
+                            }
+                        }
+                    }
+                }
+            } failBlock:^(NSError * _Nonnull error) {
+                
+            }];
+        }
+    }
+}
+
+- (void)refreshScript{
+    [self initScrpitContent];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self reloadTableView];
+        [self.tableView reloadData];
+    });
 }
 
 - (void)initScrpitContent{
@@ -123,7 +242,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (self.searchController.active) {
-        return self.results.count ;
+        return self.results.count;
     }
     
     return self.datas.count;
@@ -131,9 +250,9 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     
-    JSDetailCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cellID"];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cellID"];
     if (cell == nil) {
-        cell = [[JSDetailCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cellID"];
+        cell = [[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cellID"];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
     }
@@ -148,12 +267,34 @@
         model = _datas[indexPath.row];
     }
     
-    UILabel *titleLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 10, kScreenWidth, 21)];
+    UIColor *bgColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return [UIColor whiteColor];
+            }
+            else {
+                return [UIColor blackColor];
+            }
+        }];
+    
+    cell.contentView.backgroundColor = bgColor;
+    
+    UILabel *titleLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 10, kScreenWidth / 3 * 2, 21)];
     titleLabel.font = [UIFont boldSystemFontOfSize:18];
     titleLabel.textAlignment = NSTextAlignmentLeft;
+    titleLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     titleLabel.text = model.name;
+    [titleLabel sizeToFit];
     [cell.contentView addSubview:titleLabel];
     
+    UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, kScreenWidth / 2, 21)];
+    versionLabel.font = [UIFont boldSystemFontOfSize:15];
+    versionLabel.textAlignment = NSTextAlignmentLeft;
+    versionLabel.text = model.version;
+    versionLabel.textColor = RGB(182, 32, 224);
+    versionLabel.left = titleLabel.right + 5;
+    versionLabel.centerY = titleLabel.centerY;
+    [cell.contentView addSubview:versionLabel];
+
     UILabel *authorLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 5, kScreenWidth, 19)];
     authorLabel.font = [UIFont systemFontOfSize:16];
     authorLabel.textAlignment = NSTextAlignmentLeft;
@@ -162,9 +303,10 @@
     [authorLabel sizeToFit];
     [cell.contentView addSubview:authorLabel];
     
-    UILabel *descLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 5, kScreenWidth, 19)];
+    UILabel *descLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 5, kScreenWidth - 30, 19)];
     descLabel.font = [UIFont systemFontOfSize:15];
     descLabel.textAlignment = NSTextAlignmentLeft;
+    descLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     descLabel.text = model.desc;
     descLabel.top = authorLabel.bottom + 5;
     descLabel.textColor = [UIColor grayColor];
@@ -176,7 +318,7 @@
     if(model.active == 0) {
         actLabel.text = @"Stopped";
     } else {
-        actLabel.text = @"Actived";
+        actLabel.text = @"Activated";
     }
     [actLabel sizeToFit];
     actLabel.right = kScreenWidth - 35;
@@ -184,7 +326,15 @@
 
     [cell.contentView addSubview:actLabel];
     UIView *line = [[UIView alloc] initWithFrame:CGRectMake(15,94,kScreenWidth - 10,1)];
-    [line setBackgroundColor:RGBA(216, 216, 216, 0.3)];
+    UIColor *lineBgcolor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return RGBA(216, 216, 216, 0.3);
+            }
+            else {
+                return RGBA(37, 37, 40, 1);
+            }
+        }];
+    [line setBackgroundColor:lineBgcolor];
     [cell.contentView addSubview:line];
 
     return cell;

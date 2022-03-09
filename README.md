@@ -1,15 +1,18 @@
-<p align="center">
-  <span><img src="./Material/icon.png" width="128"/></span>
-</p>
+<img width="128px" src="./Material/icon.png" alt="Logo" align="left"/>
 
-<p align="right">中文 | <a href="README-EN.md">EN</a></p>
+# [Stay²](https://apps.apple.com/cn/app/stay-%E7%BD%91%E9%A1%B5%E7%BA%AF%E6%B5%8F%E8%A7%88/id1591620171)
 
-# Stay²
+[![Views](https://views.whatilearened.today/views/github/shenruisi/Stay.svg)]()
+[![iOS System](https://img.shields.io/badge/iOS-15%2B-brightgreen)]()
+[![TestFlight](https://img.shields.io/badge/TestFlight-2.0.2-4391E1)](https://app.airport.community/app/recICnNcHuUDSCL2b)
+[![HelloGithub](https://img.shields.io/badge/HelloGithub-vol.70-white)](https://hellogithub.com/periodical/volume/70/)
+[![Dev](https://img.shields.io/badge/Develop%20Branch-2.0.3-blueviolet)]()
+[![Newsletter](https://img.shields.io/badge/Newsletter-Subscribe-important)](https://www.getrevue.co/profile/shenruisi)
+
+
+<p align="right">中文 | <a href="README-EN.md">EN</a></p>     
+
 Stay²是一个开源的**本地**iOS Safari扩展脚本管理器，Stay²有着自己的API提供给开发者，并且也支持部分油猴脚本。
-
-[跳转到AppStore下载](https://apps.apple.com/cn/app/stay-%E7%BD%91%E9%A1%B5%E7%BA%AF%E6%B5%8F%E8%A7%88/id1591620171)。
-
-Stay²需要运行在iOS 15及以上。
 
 
 ## 主要功能
@@ -21,6 +24,9 @@ Stay²需要运行在iOS 15及以上。
 
 ## Stay API
 [API Wiki](https://github.com/shenruisi/Stay/wiki/Stay-API-Reference)
+
+## 脚本仓库
+[Stay官方脚本](https://github.com/shenruisi/Stay-Offical-Userscript)
 
 ## 许可证
 [MPL](./LICENSE)

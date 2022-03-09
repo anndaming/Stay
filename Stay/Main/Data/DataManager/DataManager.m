@@ -10,6 +10,7 @@
 #import <sqlite3.h>
 #import "ScriptDetailModel.h"
 #import "Tampermonkey.h"
+#import "SYVersionUtils.h"
 
 @implementation DataManager
 
@@ -21,26 +22,13 @@
     dispatch_once(&onceToken, ^{
         instance = [[DataManager alloc] init];
         [instance copyFile2Documents:@"syScript.sqlite"];
+        [instance recoverBadData];
 
     });
     return instance;
     
 }
 
-//- (void)moveBundleFileToSandBox{
-//    NSFileManager *fm = [NSFileManager defaultManager];
-//    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-//    NSString *documentsDirectory=[paths objectAtIndex:0];
-//    NSString *destpath = [documentsDirectory stringByAppendingPathComponent:@"haihuBrands/brandList.sqlite"];
-//    if (![fm fileExistsAtPath:destpath]){
-//        NSError *err = nil;
-//        NSString *sourcePath = [[NSBundle mainBundle]pathForResource:@"brandList" ofType:@"sqlite"];
-//        [fm copyItemAtPath:sourcePath toPath:destpath error:&err];
-//        if (err != nil){
-//            NSLog(@"error!!!!!");
-//        }
-//    }
-//}
 
 -(NSString*) copyFile2Documents:(NSString*)fileName
 {
@@ -59,10 +47,254 @@
             [fileManager copyItemAtPath:sourcePath toPath:destPath error:&error];
         }
     } else {
-        NSArray *scriptArray = [self findScriptInLib];
-        
+        [self recoverBadData];
     }
     return destPath;
+}
+
+- (void)recoverBadData{
+    if(![self isExitedColumn:@"switch"]){
+        [self addColumn:@"user_config_script" column:@"updateUrl"];
+        [self addColumn:@"user_config_script" column:@"downloadUrl"];
+        [self addIntegerColumn:@"user_config_script" column:@"switch"];
+        [self addColumn:@"script_config" column:@"updateUrl"];
+        [self addColumn:@"script_config" column:@"downloadUrl"];
+    }
+    NSArray *list =  [self findProjectSearchLib];
+    for(int i = 0; i < list.count; i++) {
+        UserScript *scrpitDetail = list[i];
+        UserScript *old = [self selectScriptConfigFromUUid:scrpitDetail.uuid];
+        if(old == nil) {
+            [self insertScriptConfigByUserScript:scrpitDetail];
+        } else {
+            NSInteger status =  [SYVersionUtils compareVersion:scrpitDetail.version toVersion:old.version];
+            if(status == 1) {
+                [self updateScriptConfigByUserScript:scrpitDetail];
+            }
+         
+        }
+    }
+    return;
+}
+
+
+- (void)addIntegerColumn:(NSString *)tableName column:(NSString *)columnName{
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        NSLog(@"数据库文件打开失败");
+        return;
+    }
+    NSString *sql = [NSString stringWithFormat:@"alter table '%@' add '%@' INTEGER DEFAULT 1",tableName,columnName];
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return ;
+    }
+    //执行SQL语句,代表找到一条符合条件的数据，如果有多条数据符合条件，则要循环调用
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(sqliteHandle);
+    return ;
+    
+}
+
+- (void)addColumn:(NSString *)tableName column:(NSString *)columnName{
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        NSLog(@"数据库文件打开失败");
+        return;
+    }
+    NSString *sql = [NSString stringWithFormat:@"alter table '%@' add '%@' text ",tableName,columnName];
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return ;
+    }
+    //执行SQL语句,代表找到一条符合条件的数据，如果有多条数据符合条件，则要循环调用
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(sqliteHandle);
+    return ;
+    
+}
+
+- (BOOL)isExitedColumn:(NSString *)column {
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        NSLog(@"数据库文件打开失败");
+        return true;
+    }
+    
+    NSString *sql = @"select count(*) from sqlite_master where name='user_config_script' and sql like '%%%@%%'";
+    sql = [NSString stringWithFormat:sql,column];
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return true;
+    }
+    //执行SQL语句,代表找到一条符合条件的数据，如果有多条数据符合条件，则要循环调用
+    int activite = 0;
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        activite = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(sqliteHandle);
+    return activite == 0? false:true;
+}
+
+//根据条件查询一组用户，模糊查询 DQL
+- (NSArray *)findProjectSearchLib {
+    
+    NSMutableArray *scriptList = [NSMutableArray array];
+    
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSString* destPath =[[NSBundle mainBundle] pathForResource:@"scriptManager" ofType:@"sqlite"];
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        
+        NSLog(@"数据库文件打开失败");
+        
+        return scriptList;
+    }
+    
+    //构造SQL语句
+
+    NSString *sql = @"SELECT * FROM script_config";
+    
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return scriptList;
+    }
+    
+//    绑定占位符
+//    NSString *queryCondition = [NSString stringWithFormat:@"%d", condition];
+    //执行SQL语句,代表找到一条符合条件的数据，如果有多条数据符合条件，则要循环调用
+    while(sqlite3_step(stmt) == SQLITE_ROW) {
+        
+        UserScript *scrpitDetail = [[UserScript alloc] init];
+        
+        //第几列字段是从0开始
+        scrpitDetail.uuid = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 1)== NULL?"":(const char *)sqlite3_column_text(stmt, 1)];
+        scrpitDetail.name = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 2)== NULL?"":(const char *)sqlite3_column_text(stmt, 2)];
+        scrpitDetail.namespace = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 3) == NULL?"":(const char *)sqlite3_column_text(stmt, 3)];
+        scrpitDetail.author = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 4)== NULL?"":(const char *)sqlite3_column_text(stmt, 4)];
+        scrpitDetail.version =  [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 5)== NULL?"":(const char *)sqlite3_column_text(stmt, 5)];
+        scrpitDetail.desc = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 6)== NULL?"":(const char *)sqlite3_column_text(stmt, 6)];
+        scrpitDetail.homepage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 7)== NULL?"":(const char *)sqlite3_column_text(stmt, 7)];
+        scrpitDetail.icon = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 8)== NULL?"":(const char *)sqlite3_column_text(stmt, 8)];
+        
+        NSString * includesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 9)== NULL?"":(const char *)sqlite3_column_text(stmt, 9)];
+        if (includesStr != NULL && includesStr.length > 0) {
+            scrpitDetail.includes = [includesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.includes = @[];
+        }
+        NSString * mathesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 10)== NULL?"":(const char *)sqlite3_column_text(stmt, 10)];
+        if (mathesStr != NULL && mathesStr.length > 0) {
+            scrpitDetail.mathes = [mathesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.mathes = @[];
+        }
+        NSString * excludesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 11)== NULL?"":(const char *)sqlite3_column_text(stmt, 11)];
+        if (excludesStr != NULL && excludesStr.length > 0) {
+            scrpitDetail.excludes = [excludesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.excludes = @[];
+        }
+        
+        scrpitDetail.runAt = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 12)== NULL?"":(const char *)sqlite3_column_text(stmt, 12)];
+        
+        NSString * grantsStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 13)== NULL?"":(const char *)sqlite3_column_text(stmt, 13)];
+        if (grantsStr != NULL && grantsStr.length > 0) {
+            scrpitDetail.grants = [grantsStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.grants = @[];
+        }
+        
+        
+        int noframes = sqlite3_column_int(stmt, 14);
+        scrpitDetail.noFrames = noframes == 0? false:true;
+    
+        scrpitDetail.content = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 15)== NULL?"":(const char *)sqlite3_column_text(stmt, 15)];
+        
+        int activite = sqlite3_column_int(stmt, 16);
+        scrpitDetail.active = activite == 0? false:true;
+        
+        NSString * requiresUrlStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 17)== NULL?"":(const char *)sqlite3_column_text(stmt, 17)];
+        if (requiresUrlStr != NULL && requiresUrlStr.length > 0) {
+            scrpitDetail.requireUrls = [requiresUrlStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.requireUrls = @[];
+        }
+        
+        
+        NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
+        
+        scrpitDetail.sourcePage = sourcePage;
+        
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 19)== NULL?"":(const char *)sqlite3_column_text(stmt, 19)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.downloadUrl = downloadUrl;
+        [[Tampermonkey shared] conventScriptContent:scrpitDetail];
+        
+        [scriptList addObject:scrpitDetail];
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqliteHandle);
+    
+    return scriptList;
 }
 
 
@@ -172,13 +404,15 @@
         NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
         
         scrpitDetail.sourcePage = sourcePage;
-//        NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-//         [dateFormatter setDateFormat: @"yyyy-MM-dd HH:mm:ss"];
-//        NSDate* myDate=[dateFormatter dateFromString:@"2021-12-16 00:00:00"];
-//        NSTimeInterval tInterval = [myDate timeIntervalSince1970];
-            
+
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 21)== NULL?"":(const char *)sqlite3_column_text(stmt, 21)];
+        scrpitDetail.downloadUrl = downloadUrl;
         
-        
+        int updateSwitch = sqlite3_column_int(stmt, 22);
+        scrpitDetail.updateSwitch = updateSwitch == 0? false:true;
+
         [[Tampermonkey shared] conventScriptContent:scrpitDetail];
         
         [scriptList addObject:scrpitDetail];
@@ -294,7 +528,10 @@
         NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
         
         scrpitDetail.sourcePage = sourcePage;
-        
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 19)== NULL?"":(const char *)sqlite3_column_text(stmt, 19)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.downloadUrl = downloadUrl;
         [[Tampermonkey shared] conventScriptContent:scrpitDetail];
         
         [scriptList addObject:scrpitDetail];
@@ -463,6 +700,13 @@
         NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
         
         scrpitDetail.sourcePage = sourcePage;
+
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 21)== NULL?"":(const char *)sqlite3_column_text(stmt, 21)];
+        scrpitDetail.downloadUrl = downloadUrl;
+        int updateSwitch = sqlite3_column_int(stmt, 22);
+        scrpitDetail.updateSwitch = updateSwitch == 0? false:true;
         
         [[Tampermonkey shared] conventScriptContent:scrpitDetail];
         
@@ -583,7 +827,11 @@
         NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
         
         scrpitDetail.sourcePage = sourcePage;
-        
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 19)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 21)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.downloadUrl = downloadUrl;
+
         [[Tampermonkey shared] conventScriptContent:scrpitDetail];
         
         [scriptList addObject:scrpitDetail];
@@ -689,6 +937,10 @@
         
         
         NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 19)== NULL?"":(const char *)sqlite3_column_text(stmt, 19)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.downloadUrl = downloadUrl;
         
         scrpitDetail.sourcePage = sourcePage;
         
@@ -720,7 +972,7 @@
         return;
     }
     
-    NSString *sql = @"INSERT INTO user_config_script (uuid, name, namespace, author, version, desc, homepage, icon, includes,maches,excludes,runAt,grants,noFrames,content,active,requireUrls,sourcePage) VALUES (?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?)";
+    NSString *sql = @"INSERT INTO user_config_script (uuid, name, namespace, author, version, desc, homepage, icon, includes,maches,excludes,runAt,grants,noFrames,content,active,requireUrls,sourcePage,updateUrl,downloadUrl) VALUES (?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     
     sqlite3_stmt *statement;
     
@@ -766,6 +1018,10 @@
             sqlite3_bind_text(statement, 17, NULL, -1,NULL);
         }
         sqlite3_bind_text(statement, 18, [scrpitDetail.sourcePage UTF8String], -1,NULL);
+        
+        sqlite3_bind_text(statement, 19, [scrpitDetail.updateUrl UTF8String], -1,NULL);
+        
+        sqlite3_bind_text(statement, 20, [scrpitDetail.downloadUrl UTF8String], -1,NULL);
     }
     
     NSInteger resultCode = sqlite3_step(statement);
@@ -885,7 +1141,7 @@
         return;
     }
     
-    NSString *sql = @"UPDATE user_config_script set name = ?, namespace = ?, author = ?, version = ?, desc = ?, homepage = ?, icon = ?, includes= ?,maches= ?,excludes= ?,runAt= ?,grants= ?,noFrames= ?,content= ?,active= ?,requireUrls= ?,sourcePage= ? where uuid = ?";
+    NSString *sql = @"UPDATE user_config_script set name = ?, namespace = ?, author = ?, version = ?, desc = ?, homepage = ?, icon = ?, includes= ?,maches= ?,excludes= ?,runAt= ?,grants= ?,noFrames= ?,content= ?,active= ?,requireUrls= ?,sourcePage= ?,updateUrl = ?,downloadUrl = ? where uuid = ?";
     
     sqlite3_stmt *statement;
     
@@ -930,7 +1186,10 @@
             sqlite3_bind_text(statement, 16, NULL, -1,NULL);
         }
         sqlite3_bind_text(statement, 17, [scrpitDetail.sourcePage UTF8String], -1,NULL);
-        sqlite3_bind_text(statement, 18,scrpitDetail.uuid != NULL? [scrpitDetail.uuid UTF8String]:[[[NSUUID UUID] UUIDString] UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 20,scrpitDetail.uuid != NULL? [scrpitDetail.uuid UTF8String]:[[[NSUUID UUID] UUIDString] UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 18, [scrpitDetail.updateUrl UTF8String], -1,NULL);
+        
+        sqlite3_bind_text(statement, 19, [scrpitDetail.downloadUrl UTF8String], -1,NULL);
     }
     
     NSInteger resultCode = sqlite3_step(statement);
@@ -1035,14 +1294,320 @@
         
         scrpitDetail.sourcePage = sourcePage;
         
-        
-        
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 21)== NULL?"":(const char *)sqlite3_column_text(stmt, 21)];
+        scrpitDetail.downloadUrl = downloadUrl;
+        int updateSwitch = sqlite3_column_int(stmt, 22);
+        scrpitDetail.updateSwitch = updateSwitch == 0? false:true;
         [[Tampermonkey shared] conventScriptContent:scrpitDetail];
     }
     sqlite3_finalize(stmt);
     sqlite3_close(sqliteHandle);
     
     return scrpitDetail;
+}
+
+
+- (UserScript *)selectScriptConfigFromUUid:(NSString *)uuid {
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        NSLog(@"数据库文件打开失败");
+        return nil;
+    }
+    
+    NSString *sql= @"SELECT * FROM script_config WHERE uuid = ?";
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return nil;
+        
+    }
+    sqlite3_bind_text(stmt, 1, [uuid UTF8String], -1, NULL);
+
+    UserScript *scrpitDetail = [[UserScript alloc] init];
+    
+    while(sqlite3_step(stmt) == SQLITE_ROW) {
+        
+        //第几列字段是从0开始
+        scrpitDetail.uuid = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 1)== NULL?"":(const char *)sqlite3_column_text(stmt, 1)];
+        scrpitDetail.name = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 2)== NULL?"":(const char *)sqlite3_column_text(stmt, 2)];
+        scrpitDetail.namespace = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 3) == NULL?"":(const char *)sqlite3_column_text(stmt, 3)];
+        scrpitDetail.author = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 4)== NULL?"":(const char *)sqlite3_column_text(stmt, 4)];
+        scrpitDetail.version =  [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 5)== NULL?"":(const char *)sqlite3_column_text(stmt, 5)];
+        scrpitDetail.desc = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 6)== NULL?"":(const char *)sqlite3_column_text(stmt, 6)];
+        scrpitDetail.homepage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 7)== NULL?"":(const char *)sqlite3_column_text(stmt, 7)];
+        scrpitDetail.icon = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 8)== NULL?"":(const char *)sqlite3_column_text(stmt, 8)];
+        
+        NSString * includesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 9)== NULL?"":(const char *)sqlite3_column_text(stmt, 9)];
+        if (includesStr != NULL && includesStr.length > 0) {
+            scrpitDetail.includes = [includesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.includes = @[];
+        }
+        NSString * mathesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 10)== NULL?"":(const char *)sqlite3_column_text(stmt, 10)];
+        if (mathesStr != NULL && mathesStr.length > 0) {
+            scrpitDetail.mathes = [mathesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.mathes = @[];
+        }
+        NSString * excludesStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 11)== NULL?"":(const char *)sqlite3_column_text(stmt, 11)];
+        if (excludesStr != NULL && excludesStr.length > 0) {
+            scrpitDetail.excludes = [excludesStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.excludes = @[];
+        }
+        
+        scrpitDetail.runAt = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 12)== NULL?"":(const char *)sqlite3_column_text(stmt, 12)];
+        
+        NSString * grantsStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 13)== NULL?"":(const char *)sqlite3_column_text(stmt, 13)];
+        if (grantsStr != NULL && grantsStr.length > 0) {
+            scrpitDetail.grants = [grantsStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.grants = @[];
+        }
+        
+        
+        int noframes = sqlite3_column_int(stmt, 14);
+        scrpitDetail.noFrames = noframes == 0? false:true;
+    
+        scrpitDetail.content = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 15)== NULL?"":(const char *)sqlite3_column_text(stmt, 15)];
+        
+        int activite = sqlite3_column_int(stmt, 16);
+        scrpitDetail.active = activite == 0? false:true;
+        
+        NSString * requiresUrlStr = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 17)== NULL?"":(const char *)sqlite3_column_text(stmt, 17)];
+        if (requiresUrlStr != NULL && requiresUrlStr.length > 0) {
+            scrpitDetail.requireUrls = [requiresUrlStr componentsSeparatedByString:@","];
+        } else {
+            scrpitDetail.requireUrls = @[];
+        }
+        
+        NSString *sourcePage = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 18)== NULL?"":(const char *)sqlite3_column_text(stmt, 18)];
+        
+        NSString *updateUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 19)== NULL?"":(const char *)sqlite3_column_text(stmt, 19)];
+        scrpitDetail.updateUrl = updateUrl;
+        NSString *downloadUrl = [NSString stringWithUTF8String:(const char *)sqlite3_column_text(stmt, 20)== NULL?"":(const char *)sqlite3_column_text(stmt, 20)];
+        scrpitDetail.downloadUrl = downloadUrl;
+
+        scrpitDetail.sourcePage = sourcePage;
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqliteHandle);
+    return scrpitDetail;
+}
+
+- (void)updateScriptConfigByUserScript:(UserScript *)scrpitDetail {
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+
+    result = sqlite3_open_v2([destPath UTF8String], &sqliteHandle, SQLITE_OPEN_READWRITE, NULL);
+    
+    if (result != SQLITE_OK) {
+        
+        NSLog(@"数据库文件打开失败");
+        return;
+    }
+    
+    NSString *sql = @"UPDATE script_config set name = ?, namespace = ?, author = ?, version = ?, desc = ?, homepage = ?, icon = ?, includes = ? ,maches= ?,excludes = ?,runAt = ?,grants = ?,noFrames = ?,content = ?,active = ?,requireUrls = ?,sourcePage = ?,updateUrl= ?,downloadUrl = ? WHERE uuid = ?";
+    
+    sqlite3_stmt *statement;
+    
+    if (sqlite3_prepare_v2(sqliteHandle, [sql UTF8String], -1, &statement, nil) == SQLITE_OK) {
+        sqlite3_bind_text(statement, 20,scrpitDetail.uuid != NULL? [scrpitDetail.uuid UTF8String]:[[[NSUUID UUID] UUIDString] UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 1,scrpitDetail.name != NULL? [scrpitDetail.name UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 2,scrpitDetail.namespace !=NULL? [scrpitDetail.namespace UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 3,scrpitDetail.author != NULL? [scrpitDetail.author UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 4,scrpitDetail.version != NULL? [scrpitDetail.version UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 5, [scrpitDetail.desc UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 6, [scrpitDetail.homepage UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 7, [scrpitDetail.icon UTF8String], -1,NULL);
+        if(scrpitDetail.includes.count > 0) {
+        sqlite3_bind_text(statement, 8, [[scrpitDetail.includes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 8, NULL, -1,NULL);
+        }
+        
+        if(scrpitDetail.mathes.count > 0) {
+            sqlite3_bind_text(statement, 9, [[scrpitDetail.mathes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 9, NULL, -1,NULL);
+        }
+        if(scrpitDetail.excludes.count > 0) {
+            sqlite3_bind_text(statement, 10, [[scrpitDetail.excludes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 10,  NULL, -1,NULL);
+        }
+  
+        sqlite3_bind_text(statement, 11, [scrpitDetail.runAt UTF8String], -1,NULL);
+        
+        if(scrpitDetail.grants.count > 0) {
+            sqlite3_bind_text(statement, 12, [[scrpitDetail.grants componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 12, NULL, -1,NULL);
+        }
+        sqlite3_bind_int(statement, 13, scrpitDetail.noFrames?1:0);
+        sqlite3_bind_text(statement, 14, [scrpitDetail.content UTF8String], -1,NULL);
+        sqlite3_bind_int(statement, 15, scrpitDetail.active?1:0);
+        if(scrpitDetail.requireUrls.count > 0) {
+            sqlite3_bind_text(statement, 16, [[scrpitDetail.requireUrls componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 16, NULL, -1,NULL);
+        }
+        sqlite3_bind_text(statement, 17, [scrpitDetail.sourcePage UTF8String], -1,NULL);
+        
+        sqlite3_bind_text(statement, 18, [scrpitDetail.updateUrl UTF8String], -1,NULL);
+                
+        sqlite3_bind_text(statement, 19, [scrpitDetail.downloadUrl UTF8String], -1,NULL);
+    }
+    
+    NSInteger resultCode = sqlite3_step(statement);
+    if (resultCode != SQLITE_DONE) {
+        sqlite3_finalize(statement);
+    }
+    sqlite3_close(sqliteHandle);
+
+}
+
+
+- (void)insertScriptConfigByUserScript:(UserScript *)scrpitDetail {
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+
+    result = sqlite3_open_v2([destPath UTF8String], &sqliteHandle, SQLITE_OPEN_READWRITE, NULL);
+    
+    if (result != SQLITE_OK) {
+        
+        NSLog(@"数据库文件打开失败");
+        return;
+    }
+    
+    NSString *sql = @"INSERT INTO script_config (uuid, name, namespace, author, version, desc, homepage, icon, includes,maches,excludes,runAt,grants,noFrames,content,active,requireUrls,sourcePage,updateUrl,downloadUrl) VALUES (?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    
+    sqlite3_stmt *statement;
+    
+    if (sqlite3_prepare_v2(sqliteHandle, [sql UTF8String], -1, &statement, nil) == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1,scrpitDetail.uuid != NULL? [scrpitDetail.uuid UTF8String]:[[[NSUUID UUID] UUIDString] UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 2,scrpitDetail.name != NULL? [scrpitDetail.name UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 3,scrpitDetail.namespace !=NULL? [scrpitDetail.namespace UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 4,scrpitDetail.author != NULL? [scrpitDetail.author UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 5,scrpitDetail.version != NULL? [scrpitDetail.version UTF8String]:NULL, -1,NULL);
+        sqlite3_bind_text(statement, 6, [scrpitDetail.desc UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 7, [scrpitDetail.homepage UTF8String], -1,NULL);
+        sqlite3_bind_text(statement, 8, [scrpitDetail.icon UTF8String], -1,NULL);
+        if(scrpitDetail.includes.count > 0) {
+        sqlite3_bind_text(statement, 9, [[scrpitDetail.includes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 9, NULL, -1,NULL);
+        }
+        
+        if(scrpitDetail.mathes.count > 0) {
+            sqlite3_bind_text(statement, 10, [[scrpitDetail.mathes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 10, NULL, -1,NULL);
+        }
+        if(scrpitDetail.excludes.count > 0) {
+            sqlite3_bind_text(statement, 11, [[scrpitDetail.excludes componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 11,  NULL, -1,NULL);
+        }
+  
+        sqlite3_bind_text(statement, 12, [scrpitDetail.runAt UTF8String], -1,NULL);
+        
+        if(scrpitDetail.grants.count > 0) {
+            sqlite3_bind_text(statement, 13, [[scrpitDetail.grants componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 13, NULL, -1,NULL);
+        }
+        sqlite3_bind_int(statement, 14, scrpitDetail.noFrames?1:0);
+        sqlite3_bind_text(statement, 15, [scrpitDetail.content UTF8String], -1,NULL);
+        sqlite3_bind_int(statement, 16, scrpitDetail.active?1:0);
+        if(scrpitDetail.requireUrls.count > 0) {
+            sqlite3_bind_text(statement, 17, [[scrpitDetail.requireUrls componentsJoinedByString:@","] UTF8String], -1,NULL);
+        } else {
+            sqlite3_bind_text(statement, 17, NULL, -1,NULL);
+        }
+        sqlite3_bind_text(statement, 18, [scrpitDetail.sourcePage UTF8String], -1,NULL);
+        
+        sqlite3_bind_text(statement, 19, [scrpitDetail.updateUrl UTF8String], -1,NULL);
+                
+        sqlite3_bind_text(statement, 20, [scrpitDetail.downloadUrl UTF8String], -1,NULL);
+    }
+    
+    NSInteger resultCode = sqlite3_step(statement);
+    if (resultCode != SQLITE_DONE) {
+        sqlite3_finalize(statement);
+    }
+    sqlite3_close(sqliteHandle);
+}
+
+- (void)updateScriptConfigAutoupdate:(int)status numberId:(NSString *)uuid {
+    //打开数据库
+    sqlite3 *sqliteHandle = NULL;
+    int result = 0;
+    
+    NSArray *paths =NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask, YES);
+    NSString*documentsDirectory =[paths objectAtIndex:0];
+    
+    NSString *destPath =[documentsDirectory stringByAppendingPathComponent:@"syScript.sqlite"];
+
+
+    result = sqlite3_open([destPath
+                           UTF8String], &sqliteHandle);
+    
+    if (result != SQLITE_OK) {
+        
+        NSLog(@"数据库文件打开失败");
+        
+        return;
+    }
+    
+    //构造SQL语句
+
+    NSString *sql = @"UPDATE user_config_script SET switch = ? WHERE uuid = ? ";
+    
+    sqlite3_stmt *stmt = NULL;
+    result = sqlite3_prepare(sqliteHandle, [sql UTF8String], -1, &stmt, NULL);
+    if (result != SQLITE_OK) {
+        NSLog(@"Error %s while preparing statement", sqlite3_errmsg(sqliteHandle));
+        NSLog(@"编译sql失败");
+        sqlite3_close(sqliteHandle);
+        return;
+    }
+    sqlite3_bind_int(stmt, 1, status);
+    sqlite3_bind_text(stmt, 2, [uuid UTF8String], -1, NULL);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(sqliteHandle);
 }
 
 

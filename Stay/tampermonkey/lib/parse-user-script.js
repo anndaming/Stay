@@ -66,16 +66,17 @@ window.parseUserScript = function(content, url, failWhenMissing=false) {
   
   // Populate with defaults in case the script specifies no value.
   const details = {
-      'downloadUrl': url,
+      'downloadUrl': '',
+      'updateUrl': '',
       'excludes': [],
       'grants': [],
-      'homePageUrl': null,
-      'author':null,
+      'homePageUrl': '',
+      'author': 'Unnamed Author',
       'includes': [],
       'locales': {},
       'matches': [],
       'name': url && nameFromUrl(url) || 'Unnamed Script',
-      'namespace': url && new URL(url).host || null,
+      'namespace': url && new URL(url).host || '',
       'noFrames': false,
       'requireUrls': [],
       'resourceUrls': {},
@@ -116,6 +117,12 @@ window.parseUserScript = function(content, url, failWhenMissing=false) {
               break;
           case 'homepageURL':
               details.homePageUrl = data.value;
+              break;
+          case 'updateURL':
+              details.updateUrl = data.value;
+              break;
+          case 'downloadURL':
+              details.downloadUrl = data.value;
               break;
           case 'namespace':
           case 'version':
@@ -161,7 +168,7 @@ window.parseUserScript = function(content, url, failWhenMissing=false) {
                   new window.MatchPattern(data.value);
                   details.matches.push(data.value);
               } catch (e) {
-                  throw new Error(_('ignoring_MATCH_because_REASON', data.value, e));
+                  details.errorMessage += 'Unsupport match pattern' + data.value;
               }
               break;
           case 'icon':

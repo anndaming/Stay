@@ -26,20 +26,13 @@ Date.prototype.dateFormat = function(fmt) {
 let matchAppScriptList=[];
 let matchAppScriptConsole = [];
 let gm_console = {};
+
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
-//    if ("popup" == request.from && "fetchAppList" == request.operate){
-//        sendResponse({ body: appJumpList });
-//    }
-//    else if ("content" == request.from && "saveAppList" == request.operate){
-//        appJumpList = request.data;
-//        console.log("appJumpList",appJumpList);
-//    }
     
     if ("bootstrap" == request.from || "iframe" == request.from){
         if ("fetchScripts" == request.operate){
             console.log("background---fetchScripts request==", request);
             browser.runtime.sendNativeMessage("application.id", {type:request.operate}, function(response) {
-                console.log("sendNativeMessage==", response.body);
                 sendResponse(response);
             });
             return true;
@@ -60,7 +53,6 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         else if ("setMatchedScripts" == request.operate){
             matchAppScriptList = request.matchScripts;
-            
             console.log("setMatchedScripts request.matchScripts=",request.matchScripts)
             return true;
         }
@@ -68,19 +60,17 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     else if ("gm-apis" == request.from){
         if ("GM_error" == request.operate){
             console.log("gm-apis GM_error, from exect catch, ",request);
-            // if (gm_console[request.uuid] == null){
-            //     gm_console[request.uuid] = [];
-            // }
-            gm_console[request.uuid] = [];
+            if (!gm_console[request.uuid]) {
+                gm_console[request.uuid] = [];
+            }
             gm_console[request.uuid].push({ msg: request.message, msgType: "error", time: new Date().dateFormat()});
             console.log("GM_error=",gm_console);
         }
         if ("GM_log" == request.operate){
             console.log("gm-apis GM_log");
-            // if (gm_console[request.uuid] == null){
-            //     gm_console[request.uuid] = [];
-            // }
-            gm_console[request.uuid] = [];
+            if (!gm_console[request.uuid]){
+                gm_console[request.uuid] = [];
+            }
             gm_console[request.uuid].push({ msg: request.message, msgType: "log", time: new Date().dateFormat() });
             console.log("GM_log=",gm_console);
         }
@@ -110,6 +100,7 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
     }
     else if ("popup" == request.from){
+        console.log(request.from + " " + request.operate);
         if ("fetchLog" == request.operate){
             sendResponse({ body: gm_console });
         }
@@ -117,12 +108,11 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
             gm_console = [];
         }else if ("fetchMatchedScriptList" == request.operate){
             console.log("fetchMatchedScriptList--",request,matchAppScriptList)
-//            browser.runtime.sendMessage({ from: "background", operate: "fetchMatchedScripts" }, (response) => {
-//                            matchAppScriptList = response.body;
-//                            console.log("fetchMatchedScriptList---fetchMatchedScripts--",response,"-res--", response.body)
-//                            sendResponse({ body: matchAppScriptList });
-//                        })
-            sendResponse({ body: matchAppScriptList });
+            browser.runtime.sendMessage({ from: "background", operate: "fetchMatchedScripts" }, (response) => {
+                            matchAppScriptList = response.body;
+                            console.log("fetchMatchedScriptList---fetchMatchedScripts--",response,"-res--", response.body)
+                            sendResponse({ body: matchAppScriptList });
+                        })
         }else if ("setScriptActive" == request.operate){
             browser.runtime.sendNativeMessage("application.id", {type:request.operate, uuid:request.uuid,active: request.active }, function(response) {
                 sendResponse(response);
@@ -145,9 +135,17 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }else{
                 sendResponse({ body: [] });
             }
-            
+        }
+        else if ("fetchRegisterMenuCommand" == request.operate){
+            browser.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                browser.tabs.sendMessage(tabs[0].id, { from : "background", operate: "fetchRegisterMenuCommand"});
+            });
+        }
+        else if ("execRegisterMenuCommand" == request.operate){
+            browser.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                browser.tabs.sendMessage(tabs[0].id, { from : "background", operate: "execRegisterMenuCommand", id:request.id, uuid:request.uuid});
+            });
         }
         return true;
     }
-    
 });

@@ -38,12 +38,21 @@
     self.searchController.delegate = self;
     self.searchController.searchBar.delegate = self;
     [self.searchController.searchBar setTintColor:RGB(182, 32, 224)];
-    search.searchBar.placeholder = @"ALL user scripts";
+    search.searchBar.placeholder = @"All userscripts";
     [_datas removeAllObjects];
     [_datas addObjectsFromArray:[[DataManager shareManager] findScriptInLib]];
+    [[NSNotificationCenter defaultCenter]addObserver:self selector:@selector(uploadScriptSuccess:) name:@"uploadScriptSuccess" object:nil];
+
     [self.tableView reloadData];
 }
 
+- (void)uploadScriptSuccess:(id)sender{
+    [_datas removeAllObjects];
+    [_datas addObjectsFromArray:[[DataManager shareManager] findScriptInLib]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.tableView reloadData];
+    });
+}
 
 #pragma mark - UISearchResultsUpdating
 - (void)updateSearchResultsForSearchController:(nonnull UISearchController *)searchController {
@@ -97,9 +106,9 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    JSDetailCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cellID"];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cellID"];
     if (cell == nil) {
-        cell = [[JSDetailCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cellID"];
+        cell = [[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cellID"];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
     }
@@ -115,11 +124,33 @@
         model = _datas[indexPath.row];
     }
     
-    UILabel *titleLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 10, kScreenWidth, 21)];
+    UIColor *bgColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return [UIColor whiteColor];
+            }
+            else {
+                return [UIColor blackColor];
+            }
+        }];
+    
+    cell.contentView.backgroundColor = bgColor;
+    
+    UILabel *titleLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 10, kScreenWidth / 3 * 2, 21)];
     titleLabel.font = [UIFont boldSystemFontOfSize:18];
     titleLabel.textAlignment = NSTextAlignmentLeft;
+    titleLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     titleLabel.text = model.name;
+    [titleLabel sizeToFit];
     [cell.contentView addSubview:titleLabel];
+    
+    UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, kScreenWidth / 2, 21)];
+    versionLabel.font = [UIFont boldSystemFontOfSize:15];
+    versionLabel.textAlignment = NSTextAlignmentLeft;
+    versionLabel.text = model.version;
+    versionLabel.textColor = RGB(182, 32, 224);
+    versionLabel.left = titleLabel.right + 5;
+    versionLabel.centerY = titleLabel.centerY;
+    [cell.contentView addSubview:versionLabel];
     
     UILabel *authorLabel = [[UILabel alloc]initWithFrame:CGRectMake(15, 5, kScreenWidth, 19)];
     authorLabel.font = [UIFont systemFontOfSize:16];
@@ -151,7 +182,15 @@
 
     [cell.contentView addSubview:actLabel];
     UIView *line = [[UIView alloc] initWithFrame:CGRectMake(15,94,kScreenWidth - 10,1)];
-    [line setBackgroundColor:RGBA(216, 216, 216, 0.3)];
+    UIColor *lineBgcolor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return RGBA(216, 216, 216, 0.3);
+            }
+            else {
+                return RGBA(37, 37, 40, 1);
+            }
+        }];
+    [line setBackgroundColor:lineBgcolor];
     [cell.contentView addSubview:line];
     
     return cell;

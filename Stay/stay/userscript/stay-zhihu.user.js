@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         知乎@AutoExpend
+// @name         知乎@AutoExpand
 // @namespace    http://stay.app/
-// @version      0.0.1
+// @version      0.0.2
 // @description  自动展开回答，支持知乎桌面版
 // @author       Stay²
 // @match        *://*.zhihu.com/*
-// @exclude      *://*.zhihu.com/R_E_D_I_R_E_C_T/*
+// @exclude      (http|https)://*.zhihu.com/R_E_D_I_R_E_C_T/*
 // @run-at       document-start
 // @grant        GM_log
 // @require      stay://vendor/stay-taskloop.js
@@ -110,6 +110,10 @@ function supportDesktopBrowsingIfNeeded(){
                 document.documentElement.appendChild(node);
             }
     }
+    else{
+        let tasks = [removeChoosePanel,removeAppJump,replaceDirectUrl,unfold];
+        Stay_Inject.run(tasks,100,30,false).then((data) => {});
+    }
 }
 
 if (document.readyState !== "loading"){
@@ -119,17 +123,6 @@ else{
     document.addEventListener("DOMContentLoaded", function(event) {
         supportDesktopBrowsingIfNeeded();
     });
-}
-
-window.onload = function(){
-    console.log("console log window.onload");
-    GM_log("gmlog window.onload");
-    if (!/Macintosh/.test(window.navigator.userAgent)){
-        
-        let tasks = [removeChoosePanel,removeAppJump,replaceDirectUrl,unfold];
-        Stay_Inject.run(tasks,100,30,false).then((data) => {});
-    }
-    
 }
 
 document.addEventListener("scroll", function(event) {

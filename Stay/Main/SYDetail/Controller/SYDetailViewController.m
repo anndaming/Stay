@@ -17,11 +17,20 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = RGB(242, 242, 246);
+    UIColor *textColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return [UIColor blackColor];
+            }
+            else {
+                return [UIColor whiteColor];
+            }
+        }];
+
+    self.view.backgroundColor = [self createBgColor];
     UILabel *label = [[UILabel alloc]initWithFrame:CGRectMake(0.0,0.0,200,44.0)];
     [label setBackgroundColor:[UIColor clearColor]];
     [label setNumberOfLines:0];
-    [label setTextColor:[UIColor blackColor]];
+    [label setTextColor:textColor];
     [label setTextAlignment:NSTextAlignmentCenter];
     [label setText:self.script.name];
     label.font = [UIFont boldSystemFontOfSize:17];
@@ -51,13 +60,21 @@
 }
 
 - (void)createDetailView{
+    UIColor *bgColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return [UIColor whiteColor];
+            }
+            else {
+                return RGB(28, 28, 28);
+            }
+        }];
     
     UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0,0,self.view.width ,self.view.height)];
     
     [self.view addSubview:scrollView];
     
     UIView *detailView = [[UIView alloc] initWithFrame:CGRectMake(20, 15, kScreenWidth - 40, 271)];
-    detailView.backgroundColor = [UIColor whiteColor];
+    detailView.backgroundColor = bgColor;
     detailView.layer.cornerRadius = 8;
     [scrollView addSubview:detailView];
     
@@ -115,7 +132,9 @@
     scriptLabel.left = 17;
     [detailView addSubview:scriptLabel];
     
-    UIImageView *scriptIconLabel = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"arrow"]];
+    
+    NSString *imageName = CGColorEqualToColor([[self createBgColor] CGColor],[[UIColor blackColor] CGColor])?@"arrow-dark":@"arrow";
+    UIImageView *scriptIconLabel = [[UIImageView alloc] initWithImage:[UIImage imageNamed:imageName]];
     scriptIconLabel.right = kScreenWidth - 48;
     scriptIconLabel.centerY = scriptLabel.centerY;
     [detailView addSubview:scriptIconLabel];
@@ -159,9 +178,28 @@
     descDetailLabel.numberOfLines = 2;
     [descDetailLabel sizeToFit];
     [detailView addSubview:descDetailLabel];
-    
-    detailView.height = descDetailLabel.bottom + 13;
-    
+        
+     if(!self.isSearch && self.script.downloadUrl != nil && self.script.downloadUrl.length > 0){
+        UIView *line13 = [self createLine];
+        line13.top = descDetailLabel.bottom + 13;
+        [detailView addSubview:line13];
+        
+        UILabel *autoUpdateLabel = [self createDefaultLabelWithText:NSLocalizedString(@"settings.autoUpdate","autoUpdate")];
+        autoUpdateLabel.top = line13.bottom +13;
+        autoUpdateLabel.left = 17;
+        [detailView addSubview:autoUpdateLabel];
+       
+        UISwitch *autoUpdateSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(10,99,42 ,27)];
+        autoUpdateSwitch.centerY = autoUpdateLabel.centerY;
+        autoUpdateSwitch.right = kScreenWidth - 48;
+        [autoUpdateSwitch setOn: self.script.updateSwitch];
+        [detailView addSubview:autoUpdateSwitch];
+        [autoUpdateSwitch addTarget:self action:@selector(updateSwitchAction:) forControlEvents:UIControlEventValueChanged];
+        detailView.height = autoUpdateLabel.bottom + 13;
+    } else {
+        detailView.height = descDetailLabel.bottom + 13;
+    }
+     
     UILabel *configLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
     configLabel.font = [UIFont systemFontOfSize:17];
     configLabel.text = [NSString stringWithFormat:@"%@\"%@\"",@"CONIFGURATION FOR",self.script.name];
@@ -173,7 +211,7 @@
     
     
     UIView *configView = [[UIView alloc] initWithFrame:CGRectMake(16, 120, kScreenWidth - 40, 238)];
-    configView.backgroundColor = [UIColor whiteColor];
+    configView.backgroundColor = bgColor;
     configView.layer.cornerRadius = 8;
     configView.top = configLabel.bottom + 16;
     [scrollView addSubview:configView];
@@ -183,7 +221,7 @@
     matchLabel.left = 17;
     [configView addSubview:matchLabel];
     
-    UILabel *matchDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
+    UILabel *matchDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,500)];
     matchDetailLabel.font = [UIFont systemFontOfSize:17];
     if (self.script.mathes.count > 0) {
         matchDetailLabel.text = [NSString stringWithFormat:@"[%@]", [self.script.mathes componentsJoinedByString:@","]];
@@ -194,6 +232,8 @@
     matchDetailLabel.left = 17;
     matchDetailLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     matchDetailLabel.textColor = RGB(138, 138, 138);
+    matchDetailLabel.numberOfLines = 0;
+    [matchDetailLabel sizeToFit];
     [configView addSubview:matchDetailLabel];
     
     UIView *line5 = [self createLine];;
@@ -205,7 +245,7 @@
     includesLabel.left = 17;
     [configView addSubview:includesLabel];
     
-    UILabel *includesDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
+    UILabel *includesDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,500)];
     includesDetailLabel.font = [UIFont systemFontOfSize:17];
     if (self.script.includes.count > 0) {
         includesDetailLabel.text = [NSString stringWithFormat:@"[%@]", [self.script.includes componentsJoinedByString:@","]];
@@ -216,6 +256,8 @@
     includesDetailLabel.left = 17;
     includesDetailLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     includesDetailLabel.textColor = RGB(138, 138, 138);
+    includesDetailLabel.numberOfLines = 0;
+    [includesDetailLabel sizeToFit];
     [configView addSubview:includesDetailLabel];
     
     UIView *line8 = [self createLine];
@@ -227,7 +269,7 @@
     excludesLabel.left = 17;
     [configView addSubview:excludesLabel];
     
-    UILabel *excludesDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
+    UILabel *excludesDetailLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,500)];
     excludesDetailLabel.font = [UIFont systemFontOfSize:17];
     if (self.script.excludes.count > 0) {
         excludesDetailLabel.text = [NSString stringWithFormat:@"[%@]", [self.script.excludes componentsJoinedByString:@","]];
@@ -238,6 +280,8 @@
     excludesDetailLabel.left = 17;
     excludesDetailLabel.lineBreakMode= NSLineBreakByTruncatingTail;
     excludesDetailLabel.textColor = RGB(138, 138, 138);
+    excludesDetailLabel.numberOfLines = 0;
+    [excludesDetailLabel sizeToFit];
     [configView addSubview:excludesDetailLabel];
     
     UIView *line9 = [self createLine];
@@ -263,8 +307,50 @@
     line6.top = runAtDetailLabel.bottom + 9;
     [configView addSubview:line6];
     
+    
+    UILabel *updateLabel = [self createDefaultLabelWithText:@"Updateurl"];
+    updateLabel.top = line6.bottom + 13;
+    updateLabel.left = 17;
+    [configView addSubview:updateLabel];
+    
+    UILabel *updateUrlLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
+    updateUrlLabel.font = [UIFont systemFontOfSize:17];
+    updateUrlLabel.text = self.script.updateUrl;
+    updateUrlLabel.top = updateLabel.bottom +13;
+    updateUrlLabel.left = 17;
+    updateUrlLabel.lineBreakMode= NSLineBreakByTruncatingTail;
+    updateUrlLabel.textColor = RGB(138, 138, 138);
+    updateUrlLabel.numberOfLines = 0;
+    [updateUrlLabel sizeToFit];
+    [configView addSubview:updateUrlLabel];
+    
+    UIView *line11 = [self createLine];
+    line11.top = updateUrlLabel.bottom + 9;
+    [configView addSubview:line11];
+    
+    UILabel *downloadLabel = [self createDefaultLabelWithText:@"Downloadurl"];
+    downloadLabel.top = line11.bottom + 13;
+    downloadLabel.left = 17;
+    [configView addSubview:downloadLabel];
+    
+    UILabel *downLoadUrlLabel = [[UILabel alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 62 ,22)];
+    downLoadUrlLabel.font = [UIFont systemFontOfSize:17];
+    downLoadUrlLabel.text = self.script.downloadUrl;
+    downLoadUrlLabel.top = downloadLabel.bottom +13;
+    downLoadUrlLabel.left = 17;
+    downLoadUrlLabel.lineBreakMode= NSLineBreakByTruncatingTail;
+    downLoadUrlLabel.textColor = RGB(138, 138, 138);
+    downLoadUrlLabel.numberOfLines = 0;
+    [downLoadUrlLabel sizeToFit];
+    [configView addSubview:downLoadUrlLabel];
+    
+    UIView *line12 = [self createLine];
+    line12.top = downLoadUrlLabel.bottom + 9;
+    [configView addSubview:line12];
+    
+    
     UILabel *grantsLabel = [self createDefaultLabelWithText:@"Grants"];
-    grantsLabel.top = line6.bottom + 13;
+    grantsLabel.top = line12.bottom + 13;
     grantsLabel.left = 17;
     [configView addSubview:grantsLabel];
     
@@ -351,9 +437,26 @@
     [self initScrpitContent];
 }
 
+- (void) updateSwitchAction:(UISwitch *) scriptSwitch {
+    if (scriptSwitch.on == YES) {
+        [[DataManager shareManager] updateScriptConfigAutoupdate:1 numberId:self.script.uuid];
+    } else {
+        [[DataManager shareManager] updateScriptConfigAutoupdate:0 numberId:self.script.uuid];
+    }
+}
+
 - (UIView *)createLine{
     UIView *line = [[UIView alloc] initWithFrame:CGRectMake(15,99,kScreenWidth - 57 ,1)];
-    [line setBackgroundColor:RGBA(216, 216, 216, 0.3)];
+    UIColor *bgcolor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return RGBA(216, 216, 216, 0.3);
+            }
+            else {
+                return RGBA(37, 37, 40, 1);
+            }
+        }];
+
+    [line setBackgroundColor:bgcolor];
     return line;
 }
 
@@ -389,5 +492,17 @@
     // Pass the selected object to the new view controller.
 }
 */
+
+- (UIColor *)createBgColor {
+    UIColor *viewBgColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull trainCollection) {
+            if ([trainCollection userInterfaceStyle] == UIUserInterfaceStyleLight) {
+                return RGB(242, 242, 246);
+            }
+            else {
+                return [UIColor blackColor];
+            }
+        }];
+    return viewBgColor;
+}
 
 @end
